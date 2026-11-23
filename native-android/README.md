@@ -1,62 +1,72 @@
 # 汽水自动助手（原生 Android）
 
-这是 `qishuiAScriptAndroid` 的原生 Kotlin 改造版。目标是在不安装 AScript、Python 或 VS Code 的情况下，将自动化能力打包为独立 APK。
+原生 Kotlin 版本，不依赖 AScript、Python 或 VS Code。目标应用包名为 `com.luna.music`。
 
-> 当前交付为源代码，尚未安装或进行真机验证。
+> 当前为 0.2.0 源代码修改版；编译与真机验证结果以实际构建记录为准。
 
-## 已实现
+## 0.2.0 修改内容
 
-- 首次使用权限引导：无障碍、屏幕识别、悬浮窗
-- Android 13+ 通知权限请求
-- 前台服务运行状态与通知栏停止入口
-- 基于 `AccessibilityService` 的坐标手势、返回键和关闭控件查找
-- 基于 `MediaProjection` 的屏幕采集
-- 基于 ML Kit 中文识别的本地 OCR
-- 悬浮窗显示运行状态、领取次数和停止按钮
-- 保留原脚本的广告状态机：启动汽水音乐、开屏跳过、等待倒计时、直播退出、两步领取、外跳恢复和额度检测
+### 悬浮控制窗
 
-## 不包含
+- 按住顶部“⋮⋮ 汽水助手”标题栏可拖动。
+- 默认最小化，只显示标题、最大化按钮和停止按钮。
+- 点击“最大化”展开运行状态、领取次数和实时日志。
+- 日志位于底部时自动滚动到最新内容；向上查看历史日志时不会强制拉回。
+- 点击“最小化”收起日志并回到小窗口。
+- 拖动时会限制在屏幕范围内，最大化前的小窗口位置会在收起后恢复。
 
-- 不包含 AScript 或其运行库
-- 不需要 Python 环境
-- 不包含汽水音乐安装包
-- 不快进广告，不修改倒计时，不绕过平台限制
+### APK 体积优化
 
-## GitHub Actions 云端构建
+- 只保留 `arm64-v8a`，不再同时打包 32 位 ARM、x86 和 x86_64 原生库。
+- Debug 和 Release 均启用 R8 代码压缩与资源压缩。
+- 移除重复声明的 `play-services-tasks` 直接依赖，由 OCR 库传递提供。
+- 提供 Offline 和 Lite 两种 OCR 构建变体。
 
-仓库根目录的 `.github/workflows/android-build.yml` 会在本目录发生变化时自动构建 Debug APK，也支持在 Actions 页面手动运行。
+## Offline 与 Lite 的区别
 
-构建环境为 Ubuntu、JDK 17、Gradle 8.9 和 Android SDK 35。成功后，在该次 workflow run 的 Artifacts 区域下载 `QishuiAutomationApp-debug`，其中包含 `app-debug.apk`。
+| 版本 | 中文 OCR 模型 | 优点 | 使用条件 | Debug 输出文件 |
+|---|---|---|---|---|
+| Offline | 随 APK 捆绑 | 安装后即可识别，不依赖 Google Play 服务 | 适合无 Google Play 服务的手机 | `app-offline-debug.apk` |
+| Lite | Google Play 服务按需下载 | APK 最小 | 需要可用的 Google Play 服务；首次识别前需等待模型下载 | `app-lite-debug.apk` |
 
-Debug APK 使用 Android 构建工具自动生成的调试签名，仅用于测试，不等同于正式发布签名。
+两个版本仅 OCR 模型分发方式不同，悬浮窗和自动化逻辑相同，不能据此预先承诺具体 APK 大小；需要构建后测量。
 
-## 本地构建
+Offline 依赖：
 
-1. 使用 Android Studio 打开本目录。
-2. 准备 JDK 17、Android SDK 35 和 Gradle 8.9。
-3. 执行 `gradle :app:assembleDebug`，或由 Android Studio 构建。
-4. APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。
+```text
+com.google.mlkit:text-recognition-chinese:16.0.1
+```
 
-## 用户使用流程
+Lite 依赖：
 
-1. 安装 APK，并确认手机已安装汽水音乐。
-2. 打开“汽水自动助手”。
-3. 依次开启无障碍、授权屏幕识别、开启悬浮控制。
-4. 回到应用，点击“开始自动化”。
-5. 日志提示后手动进入第一个广告，后续由状态机接管。
-6. 可通过悬浮窗或通知栏停止。
+```text
+com.google.android.gms:play-services-mlkit-text-recognition-chinese:16.0.2
+```
 
-## 权限与系统限制
+Lite 的 `app/src/lite/AndroidManifest.xml` 声明了 `ocr_chinese`。通过侧载 APK 安装时，模型可能在首次识别时才开始下载；模型未就绪前 OCR 可能返回失败或空结果。没有 Google Play 服务的设备应使用 Offline 版。
 
-- 无障碍、录屏和悬浮窗必须由用户手动授权，应用不能静默开启。
-- 部分新 Android 版本的录屏授权只能用于一次 MediaProjection 会话，重新运行前可能需要再次授权。
-- 后台保活受手机品牌、系统版本和电池策略影响。
-- 当前屏幕采集按启动时的竖屏尺寸创建，横竖屏切换后需要重新启动自动化。
+官方说明：<https://developers.google.cn/ml-kit/vision/text-recognition/v2/android?hl=zh-cn>
 
-## 真机验证重点
+## 构建变体（供后续执行）
 
-- ML Kit 对“领取成功”“领取奖励”“继续观看”等文字的识别准确率
-- 汽水音乐当前版本的按钮位置与广告样式
-- realme、小米、华为等系统的无障碍手势兼容性
-- 录屏授权撤销、应用外跳和屏幕关闭后的恢复行为
-- 多次启动/停止后 MediaProjection 与悬浮窗资源是否正确释放
+```text
+gradle :app:assembleOfflineDebug
+gradle :app:assembleLiteDebug
+```
+
+输出目录：
+
+```text
+app/build/outputs/apk/offline/debug/app-offline-debug.apk
+app/build/outputs/apk/lite/debug/app-lite-debug.apk
+```
+
+仓库根目录的 GitHub Actions 配置也已同步为一次构建两个变体，并一起上传 Artifact。本轮会由 GitHub Actions 构建。
+
+## 兼容性说明
+
+- 当前仅支持 arm64 手机；不支持 32 位 ARM、x86/x86_64 模拟器。若需这些架构，要在 `app/build.gradle.kts` 中重新添加 ABI。
+- minSdk 26，即 Android 8.0 及以上。
+- 无障碍、屏幕录制和悬浮窗权限仍需用户手动授权。
+- R8 已启用，但混淆后的实际兼容性与 ML Kit 识别效果仍须真机验证。
+- 不快进广告、不修改倒计时、不绕过平台限制。

@@ -11,13 +11,31 @@ android {
         applicationId = "com.qingsong.qishuiautomation"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+
+        // 目标真机为 arm64；不再把 32 位和 x86 原生库打入每个 APK。
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    flavorDimensions += listOf("ocr")
+    productFlavors {
+        create("offline") {
+            dimension = "ocr"
+            versionNameSuffix = "-offline"
+        }
+        create("lite") {
+            dimension = "ocr"
+            versionNameSuffix = "-lite"
+        }
     }
 
     buildTypes {
-        release {
-            isMinifyEnabled = false
+        all {
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -36,7 +54,9 @@ android {
 }
 
 dependencies {
-    // 使用捆绑模型，避免运行时依赖 AScript 或下载 PaddleOCR。
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
-    implementation("com.google.android.gms:play-services-tasks:18.2.0")
+    // Offline：模型随 APK 分发，无 Google Play 服务也可识别。
+    "offlineImplementation"("com.google.mlkit:text-recognition-chinese:16.0.1")
+
+    // Lite：中文模型由 Google Play 服务按需下载，APK 不内嵌模型。
+    "liteImplementation"("com.google.android.gms:play-services-mlkit-text-recognition-chinese:16.0.2")
 }

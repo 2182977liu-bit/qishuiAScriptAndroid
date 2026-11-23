@@ -35,13 +35,15 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build debug APK
+      - name: Build offline and lite debug APKs
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
-      - name: Upload APK artifact
+      - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
           name: QishuiAutomationApp-debug
-          path: native-android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            native-android/app/build/outputs/apk/offline/debug/app-offline-debug.apk
+            native-android/app/build/outputs/apk/lite/debug/app-lite-debug.apk
           if-no-files-found: error
           retention-days: 30
