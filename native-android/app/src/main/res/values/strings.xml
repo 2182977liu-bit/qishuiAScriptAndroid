@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">汽水自动助手</string>
+    <string name="accessibility_description">用于识别汽水音乐界面并按用户指令执行点击。只有手动开始后才运行。</string>
+</resources>
