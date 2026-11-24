@@ -54,6 +54,8 @@ class ScreenCapture(
         )
     }
 
+    private var bufferWarned = false
+
     @Synchronized
     fun capture(): Bitmap? {
         val image = reader.acquireLatestImage() ?: return null
@@ -65,8 +67,20 @@ class ScreenCapture(
 
             val rowPadding = rowStride - pixelStride * width
             val bitmapWidth = width + rowPadding / pixelStride
+            val buffer = plane.buffer
+            buffer.rewind()
+            val requiredBytes = rowStride.toLong() * height
+            if (buffer.remaining() < requiredBytes) {
+                if (!bufferWarned) {
+                    bufferWarned = true
+                    AutomationState.log(
+                        "屏幕缓冲区不足：需要 $requiredBytes 字节，实际 ${buffer.remaining()}",
+                    )
+                }
+                return null
+            }
             val full = Bitmap.createBitmap(bitmapWidth, height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(plane.buffer)
+            full.copyPixelsFromBuffer(buffer)
             return if (bitmapWidth == width) {
                 full
             } else {

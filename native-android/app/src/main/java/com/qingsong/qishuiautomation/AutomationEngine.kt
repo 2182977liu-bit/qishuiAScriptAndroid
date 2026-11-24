@@ -2,18 +2,24 @@ package com.qingsong.qishuiautomation
 
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class AutomationEngine(
     private val context: Context,
     private val capture: ScreenCapture,
     private val ocr: OcrEngine,
+    private val overlay: ControlOverlay?,
     private val onFinished: () -> Unit,
 ) {
     @Volatile
     private var running = true
 
     private var lastOcrErrorAt = 0L
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val worker = Thread({ runSafely() }, "qishui-automation")
 
     fun start() {
@@ -106,7 +112,7 @@ class AutomationEngine(
 
     private fun splashRegion() = region(0.55, 0.02, 1.0, 0.22)
     private fun topClaimRegion() = region(0.40, 0.02, 1.0, 0.20)
-    private fun rewardDialogRegion() = region(0.08, 0.20, 0.92, 0.78)
+    private fun rewardDialogRegion() = region(0.03, 0.12, 0.97, 0.94)
     private fun continueRegion() = region(0.07, 0.25, 0.93, 0.68)
     private fun membershipRegion() = region(0.0, 0.82, 1.0, 1.0)
     private fun liveCloseRegion() = region(0.50, 0.0, 1.0, 0.22)
@@ -139,10 +145,35 @@ class AutomationEngine(
 
     private fun performClick(x: Int, y: Int, description: String): Boolean {
         if (!running) return false
+        // 手势点击前临时隐藏悬浮窗，避免窗口拦截触摸；点击后恢复。
+        val overlayWasVisible = overlay?.isVisible() == true
+        if (overlayWasVisible) setOverlayVisible(false)
         val dispatched = QishuiAccessibilityService.click(x, y)
         AutomationState.log("${if (dispatched) "点击" else "点击失败"} $description ($x,$y)")
         if (dispatched) sleepChecked(700)
+        if (overlayWasVisible) setOverlayVisible(true)
         return dispatched
+    }
+
+    private fun setOverlayVisible(visible: Boolean) {
+        if (overlay == null || (visible && !running)) return
+        val completed = CountDownLatch(1)
+        mainHandler.post {
+            runCatching {
+                if (visible) overlay.show() else overlay.hide()
+            }.onFailure {
+                AutomationState.log("悬浮窗状态更新失败：${it.message ?: it.javaClass.simpleName}")
+            }
+            completed.countDown()
+        }
+        try {
+            if (!completed.await(2, TimeUnit.SECONDS)) {
+                AutomationState.log("悬浮窗状态更新超时")
+            }
+        } catch (_: InterruptedException) {
+            // 停止任务时可能中断等待；保留中断标志，不覆盖调用方的返回值。
+            Thread.currentThread().interrupt()
+        }
     }
 
     private fun clickDescription(description: String, rect: ScreenRect): Boolean {
@@ -286,35 +317,55 @@ class AutomationEngine(
 
     private fun claimReward(initialHit: OcrHit): String {
         AutomationState.status = "正在领取奖励"
-        if (!click(initialHit, "领取成功")) return "failed"
-
-        val deadline = SystemClock.elapsedRealtime() + CLAIM_TIMEOUT * 1000L
-        var retried = false
-        while (running && SystemClock.elapsedRealtime() < deadline) {
-            val hits = readHits()
-            if (findText(hits, QUOTA_PATTERNS) != null) return "quota_exhausted"
-
-            val reward = findText(
-                hits,
-                listOf("领取奖励", "立即领取", "确认领取"),
-                rewardDialogRegion(),
-                exclude = listOf("领取成功"),
-            )
-            if (reward != null && click(reward, "领取奖励")) {
-                sleepChecked(1000)
-                return "claimed"
+        AutomationState.log("领取阶段临时隐藏悬浮窗，避免遮挡按钮")
+        setOverlayVisible(false)
+        try {
+            if (QishuiAccessibilityService.clickText(listOf("领取成功"), topClaimRegion())) {
+                AutomationState.log("通过控件点击领取成功")
+                sleepChecked(700)
+            } else if (!click(initialHit, "领取成功")) {
+                return "failed"
             }
 
-            val stillClaim = findText(hits, listOf("领取成功"), topClaimRegion())
-            if (stillClaim != null && !retried) {
-                retried = true
-                click(stillClaim, "重试领取成功")
-                continue
+            val deadline = SystemClock.elapsedRealtime() + CLAIM_TIMEOUT * 1000L
+            var retried = false
+            while (running && SystemClock.elapsedRealtime() < deadline) {
+                if (QishuiAccessibilityService.clickText(
+                        REWARD_BUTTON_LABELS,
+                        rewardDialogRegion(),
+                    )
+                ) {
+                    AutomationState.log("通过控件点击领取奖励")
+                    sleepChecked(1000)
+                    return "claimed"
+                }
+
+                val hits = readHits()
+                if (findText(hits, QUOTA_PATTERNS) != null) return "quota_exhausted"
+
+                val reward = findText(
+                    hits,
+                    REWARD_BUTTON_LABELS,
+                    rewardDialogRegion(),
+                )
+                if (reward != null && click(reward, "领取奖励")) {
+                    sleepChecked(1000)
+                    return "claimed"
+                }
+
+                val stillClaim = findText(hits, listOf("领取成功"), topClaimRegion())
+                if (stillClaim != null && !retried) {
+                    retried = true
+                    click(stillClaim, "重试领取成功")
+                    continue
+                }
+                sleepChecked(400)
             }
-            sleepChecked(400)
+            AutomationState.log("未找到可点击的领取奖励按钮，本轮失败")
+            return "failed"
+        } finally {
+            setOverlayVisible(true)
         }
-        AutomationState.log("未找到领取奖励，本轮失败")
-        return "failed"
     }
 
     private fun runAdLoop() {
@@ -369,6 +420,12 @@ class AutomationEngine(
         private const val AD_TIMEOUT = 75
         private const val MAX_AD_TIMEOUT = 120
         private const val CLAIM_TIMEOUT = 15
+
+        private val REWARD_BUTTON_LABELS = listOf(
+            "领取奖励",
+            "立即领取",
+            "确认领取",
+        )
 
         private val SAFE_SYSTEM_PACKAGES = listOf(
             "android",

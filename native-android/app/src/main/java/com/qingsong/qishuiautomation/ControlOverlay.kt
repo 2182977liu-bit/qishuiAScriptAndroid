@@ -21,10 +21,13 @@ class ControlOverlay(private val context: Context) {
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val handler = Handler(Looper.getMainLooper())
+
+    @Volatile
     private var contentView: View? = null
     private var expanded = false
     private var collapsedX = 0
     private var collapsedY = 160
+    private var positionInitialized = false
 
     private val updater = object : Runnable {
         override fun run() {
@@ -41,9 +44,12 @@ class ControlOverlay(private val context: Context) {
         if (contentView != null || !Settings.canDrawOverlays(context)) return
         val view = LayoutInflater.from(context).inflate(R.layout.overlay_control, null)
         val metrics = context.resources.displayMetrics
-        collapsedX = (metrics.widthPixels - dp(COLLAPSED_WIDTH_DP) - dp(12))
-            .coerceAtLeast(0)
-        collapsedY = dp(160)
+        if (!positionInitialized) {
+            collapsedX = (metrics.widthPixels - dp(COLLAPSED_WIDTH_DP) - dp(12))
+                .coerceAtLeast(0)
+            collapsedY = dp(160)
+            positionInitialized = true
+        }
 
         val params = WindowManager.LayoutParams(
             dp(COLLAPSED_WIDTH_DP),
@@ -175,10 +181,14 @@ class ControlOverlay(private val context: Context) {
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
+    fun isVisible(): Boolean = contentView != null
+
     fun hide() {
         handler.removeCallbacks(updater)
         contentView?.let { runCatching { windowManager.removeView(it) } }
         contentView = null
+        // 重新显示时强制折叠，避免大窗盖住广告页。
+        expanded = false
     }
 
     companion object {

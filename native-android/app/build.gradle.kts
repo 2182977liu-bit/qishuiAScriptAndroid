@@ -11,8 +11,8 @@ android {
         applicationId = "com.qingsong.qishuiautomation"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.2.1"
 
         // 目标真机为 arm64；不再把 32 位和 x86 原生库打入每个 APK。
         ndk {

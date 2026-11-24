@@ -55,6 +55,57 @@ class QishuiAccessibilityService : AccessibilityService() {
             return findInTree(root, description, rect)
         }
 
+        fun clickText(labels: List<String>, rect: ScreenRect): Boolean {
+            val root = instance?.rootInActiveWindow ?: return false
+            val normalized = labels.map(::normalizeLabel).filter { it.isNotEmpty() }
+            if (normalized.isEmpty()) return false
+            // 先精确匹配，失败再放宽为包含匹配，兼容“领取奖励 15分钟”等文案。
+            return clickInTree(root, rect) { label -> label in normalized } ||
+                clickInTree(root, rect) { label -> normalized.any { label.contains(it) } }
+        }
+
+        private fun clickInTree(
+            node: AccessibilityNodeInfo,
+            rect: ScreenRect,
+            matches: (String) -> Boolean,
+        ): Boolean {
+            val matched = sequenceOf(
+                node.text?.toString().orEmpty(),
+                node.contentDescription?.toString().orEmpty(),
+            ).map(::normalizeLabel).any { it.isNotEmpty() && matches(it) }
+
+            if (matched && node.isVisibleToUser) {
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                if (bounds.width() > 0 && bounds.height() > 0 &&
+                    rect.contains(bounds.centerX(), bounds.centerY()) &&
+                    clickSelfOrAncestor(node)
+                ) {
+                    return true
+                }
+            }
+
+            for (index in 0 until node.childCount) {
+                val child = node.getChild(index) ?: continue
+                if (clickInTree(child, rect, matches)) return true
+            }
+            return false
+        }
+
+        private fun clickSelfOrAncestor(node: AccessibilityNodeInfo): Boolean {
+            var current: AccessibilityNodeInfo? = node
+            while (current != null) {
+                if (current.isEnabled && current.isClickable) {
+                    return current.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                }
+                current = current.parent
+            }
+            return false
+        }
+
+        private fun normalizeLabel(value: String): String =
+            value.replace(Regex("\\s+"), "")
+
         private fun findInTree(
             node: AccessibilityNodeInfo,
             description: String,

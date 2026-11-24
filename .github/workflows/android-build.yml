@@ -51,14 +51,17 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.2.0
-          name: 汽水自动助手 v0.2.0
+          tag_name: v0.2.1
+          name: 汽水自动助手 v0.2.1
           body: |
-            ## 汽水自动助手 0.2.0
+            ## 汽水自动助手 0.2.1
 
-            - 悬浮窗支持拖动、最大化/最小化和实时日志
-            - Offline 版内置中文 OCR 模型，不依赖 Google Play 服务
-            - Lite 版由 Google Play 服务按需下载 OCR 模型
+            - 修复领取阶段悬浮窗遮挡/拦截点击的问题：点击前临时隐藏悬浮窗，完成后恢复
+            - 领取按钮优先走无障碍控件点击，OCR 坐标点击作为兜底
+            - 扩大领取按钮识别区域，控件匹配增加可见性校验
+            - 恢复悬浮窗时强制折叠，避免大窗盖住广告页
+            - 屏幕采集增加缓冲区校验，避免静默 OCR 失败
+            - Offline 版内置中文 OCR 模型；Lite 版由 Google Play 服务按需下载模型
             - 仅支持 arm64 手机、Android 8.0 及以上
 
             当前附件为 Debug 测试包，使用调试签名，仅用于安装测试。

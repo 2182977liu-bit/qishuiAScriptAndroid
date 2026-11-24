@@ -58,8 +58,9 @@ class AutomationService : Service() {
             capture = activeCapture
             val activeOcr = OcrEngine()
             ocr = activeOcr
-            overlay = ControlOverlay(this).also { it.show() }
-            engine = AutomationEngine(this, activeCapture, activeOcr) {
+            val activeOverlay = ControlOverlay(this).also { it.show() }
+            overlay = activeOverlay
+            engine = AutomationEngine(this, activeCapture, activeOcr, activeOverlay) {
                 mainHandler.post { finishFromEngine() }
             }.also { it.start() }
         } catch (error: Exception) {
