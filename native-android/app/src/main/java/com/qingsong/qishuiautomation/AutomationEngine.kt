@@ -156,11 +156,12 @@ class AutomationEngine(
     }
 
     private fun setOverlayVisible(visible: Boolean) {
-        if (overlay == null || (visible && !running)) return
+        val target = overlay ?: return
+        if (visible && !running) return
         val completed = CountDownLatch(1)
         mainHandler.post {
             runCatching {
-                if (visible) overlay.show() else overlay.hide()
+                if (visible) target.show() else target.hide()
             }.onFailure {
                 AutomationState.log("悬浮窗状态更新失败：${it.message ?: it.javaClass.simpleName}")
             }
